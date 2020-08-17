@@ -1,0 +1,32 @@
+name: build_and_test
+
+env:
+  CONAN_REFERENCE: "android-toolchain/r21d"
+  CONAN_USERNAME: "conan-burrito"
+  CONAN_UPLOAD: "https://api.bintray.com/conan/conan-burrito/main"
+  CONAN_STABLE_BRANCH_PATTERN: "release/*"
+  CONAN_LOGIN_USERNAME: "${{ secrets.CONAN_LOGIN_USERNAME }}"
+  CONAN_PASSWORD: "${{ secrets.CONAN_PASSWORD }}"
+  CONAN_UPLOAD_ONLY_RECIPE: 1
+
+
+on:
+  push:
+    branches:
+      - "release/**"
+
+jobs:
+  build:
+    name: build-all
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install conan
+        run:  pip install conan conan_package_tools elftools
+      - name: Build
+        run: python .ci/build.py

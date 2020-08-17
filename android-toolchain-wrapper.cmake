@@ -1,0 +1,15 @@
+# Android NDK toolchain sets all the following variables to 'ONLY', that forces
+# CMake to ignore the search paths provided by conan (i.e. nothing could be found).
+# We set it to 'BOTH' here as a workaround.
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+
+set(ANDROID_NATIVE_API_LEVEL $ENV{CONAN_ANDROID_NATIVE_API_LEVEL})
+set(ANDROID_STL $ENV{CONAN_ANDROID_STL})
+set(ANDROID_ABI $ENV{CONAN_ANDROID_ABI})
+set(ANDROID_PIE $ENV{CONAN_ANDROID_PIE})
+set(CMAKE_POSITION_INDEPENDENT_CODE $ENV{CONAN_POSITION_INDEPENDENT_CODE})
+
+include($ENV{ANDROID_NDK_CMAKE_TOOLCHAIN})
+

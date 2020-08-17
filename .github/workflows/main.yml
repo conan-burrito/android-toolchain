@@ -8,7 +8,6 @@ env:
   CONAN_LOGIN_USERNAME: "${{ secrets.CONAN_LOGIN_USERNAME }}"
   CONAN_PASSWORD: "${{ secrets.CONAN_PASSWORD }}"
   CONAN_UPLOAD_ONLY_RECIPE: 1
-  CONAN_TOTAL_PAGES: 3
 
 
 on:
@@ -17,35 +16,19 @@ on:
       - "release/**"
 
 jobs:
-  macos:
-    runs-on: macos-latest
-    env:
-      CONAN_CURRENT_PAGE: 1
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-20.04
+          - windows-latest
+          - macos-latest
     steps:
       - uses: actions/checkout@v1
       - name: Install dependencies
         run:  pip install setuptools conan conan_package_tools pyelftools
-      - name: Build
-        run: python .ci/build.py
-
-  windows:
-    runs-on: windows-latest
-    env:
-      CONAN_CURRENT_PAGE: 2
-    steps:
-      - uses: actions/checkout@v1
-      - name: Install dependencies
-        run:  pip install setuptools conan conan_package_tools pyelftools
-      - name: Build
-        run: python .ci/build.py
-
-  ubuntu:
-    runs-on: ubuntu-20.04
-    env:
-      CONAN_CURRENT_PAGE: 3
-    steps:
-      - uses: actions/checkout@v1
-      - name: Install dependencies
-        run:  pip install setuptools conan conan_package_tools pyelftools
-      - name: Build
+      - name: Build and test
         run: python .ci/build.py

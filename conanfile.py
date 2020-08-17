@@ -7,9 +7,9 @@ class AndroidNdkConan(ConanFile):
     name = 'android-toolchain'
     version = 'r21d'
     license = 'Apache License 2.0'
-    description = 'The Android NDK is a toolset that lets you implement parts '\
-                  'of your app in native code, using languages such as C and '\
-                  'C++. For certain types of apps, this can help you reuse '\
+    description = 'The Android NDK is a toolset that lets you implement parts ' \
+                  'of your app in native code, using languages such as C and ' \
+                  'C++. For certain types of apps, this can help you reuse ' \
                   'code libraries written in those languages'
 
     homepage = 'https://developer.android.com/ndk'

@@ -29,6 +29,6 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: Install dependencies
-        run:  pip3 install conan conan_package_tools elftools
+        run:  pip3 install setuptools conan conan_package_tools pyelftools
       - name: Build
         run: python3 .ci/build.py

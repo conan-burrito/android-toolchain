@@ -24,9 +24,11 @@ jobs:
       matrix:
         os:
           - macos-latest
+          - windows-latest
+          - ubuntu-latest
     steps:
       - uses: actions/checkout@v1
-      - name: Install conan
-        run:  pip install conan conan_package_tools elftools
+      - name: Install dependencies
+        run:  pip3 install conan conan_package_tools elftools
       - name: Build
-        run: python .ci/build.py
+        run: python3 .ci/build.py

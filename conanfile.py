@@ -4,7 +4,7 @@ from conans import ConanFile, tools
 
 
 class AndroidNdkConan(ConanFile):
-    name = 'android-ndk'
+    name = 'android-toolchain'
     version = 'r21d'
     license = 'Apache License 2.0'
     description = 'The Android NDK is a toolset that lets you implement parts '\

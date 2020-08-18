@@ -158,8 +158,8 @@ class AndroidNdkConan(ConanFile):
         self.env_info.ANDROID_NDK_CMAKE_TOOLCHAIN = cmake_toolchain
 
         self.env_info.CONAN_CMAKE_TOOLCHAIN_FILE = os.path.join(self.package_folder, "android-toolchain-wrapper.cmake")
-        self.env_info.CONAN_ANDROID_NATIVE_API_LEVEL = self.settings.os.api_level
-        self.env_info.CONAN_ANDROID_STL = self.settings.compiler.libcxx
+        self.env_info.CONAN_ANDROID_NATIVE_API_LEVEL = str(self.settings.os.api_level)
+        self.env_info.CONAN_ANDROID_STL = str(self.settings.compiler.libcxx)
         self.env_info.CONAN_POSITION_INDEPENDENT_CODE = 'ON' if self.options.fPIC else 'OFF'
         self.env_info.CONAN_ANDROID_PIE = 'ON' if self.options.fPIE else 'OFF'
         self.env_info.CONAN_ANDROID_ABI = self.ndk_arch

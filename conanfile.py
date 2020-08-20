@@ -23,6 +23,9 @@ class AndroidNdkConan(ConanFile):
     no_copy_source = True
     build_policy = 'missing'
 
+    # The android toolchain contains a lot of files with giant paths and names so we have to use shor paths here
+    short_paths = True
+
     # This file will be included by conan CMake build helper by setting the CONAN_CMAKE_TOOLCHAIN_FILE environment
     # variable and in turn include the Android NDK Toolchain file after setting some CMake variables
     exports_sources = 'android-toolchain-wrapper.cmake'
@@ -65,6 +68,11 @@ class AndroidNdkConan(ConanFile):
             return 'darwin'
         else:
             raise Exception('Unsupported build OS')
+
+    def configure(self):
+        if self.settings.os_build == 'Windows':
+            self.output.info('Using Android toolchain under Windows requires the MSYS environment, adding it to the requirements list')
+            self.requires('msys2/20200517')
 
     def build(self):
         # We are using the build step because sources are different for each platform
@@ -163,6 +171,10 @@ class AndroidNdkConan(ConanFile):
         self.env_info.CONAN_POSITION_INDEPENDENT_CODE = 'ON' if self.options.fPIC else 'OFF'
         self.env_info.CONAN_ANDROID_PIE = 'ON' if self.options.fPIE else 'OFF'
         self.env_info.CONAN_ANDROID_ABI = self.ndk_arch
+
+        if self.settings.os_build == 'Windows':
+            self.output.info('Setting Unix Makefiles as default generator for Android under Windows')
+            self.env_info.CONAN_CMAKE_GENERATOR="Unix Makefiles"
 
         cflags = []
         exelinkflags = []

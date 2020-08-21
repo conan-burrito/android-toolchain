@@ -27,9 +27,9 @@ def make_settings(arch):
 if __name__ == "__main__":
     builder = ConanMultiPackager()
 
-    builder.add(settings=make_settings('x86'))
-    builder.add(settings=make_settings('x86_64'))
+    # builder.add(settings=make_settings('x86'))
+    # builder.add(settings=make_settings('x86_64'))
     builder.add(settings=make_settings('armv7'))
-    builder.add(settings=make_settings('armv8'))
+    # builder.add(settings=make_settings('armv8'))
 
     builder.run()

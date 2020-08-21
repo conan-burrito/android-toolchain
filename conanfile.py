@@ -72,7 +72,7 @@ class AndroidNdkConan(ConanFile):
     def configure(self):
         if self.settings.os_build == 'Windows':
             self.output.info('Using Android toolchain under Windows requires the MSYS environment, adding it to the requirements list')
-            self.requires('msys2/20200517')
+            self.requires('msys2/20200517@conan-burrito/stable')
 
     def build(self):
         # We are using the build step because sources are different for each platform

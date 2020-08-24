@@ -59,6 +59,26 @@ class AndroidNdkConan(ConanFile):
         return '9.0.8'
 
     @property
+    def android_triple_prefix(self):
+        return {
+            'armv8': 'aarch64',
+            'armv7': 'arm',
+            'armv7s': 'arm',
+            'armv7k': 'arm',
+            'armv7hf': 'arm',
+            'x86': 'i686',
+            'x86_64': 'x86_64',
+        }[str(self.settings.arch)]
+
+    @property
+    def android_triple_suffix(self):
+        return 'androideabi' if self.android_triple_prefix == 'arm' else 'android'
+
+    @property
+    def android_triple(self):
+        return '%s-linux-%s' % (self.android_triple_prefix, self.android_triple_suffix)
+
+    @property
     def os_name(self):
         if self.settings.os_build == 'Linux':
             return 'linux'
@@ -73,6 +93,22 @@ class AndroidNdkConan(ConanFile):
         if self.settings.os_build == 'Windows':
             self.output.info('Using Android toolchain under Windows requires the MSYS environment, adding it to the requirements list')
             self.requires('msys2/20200517@conan-burrito/stable')
+
+        api_levels = {
+            'aarch64' : (21, 30),
+            'arm': (16, 30),
+            'i686': (16, 30),
+            'x86_64': (21, 30),
+        }
+        min_level, max_level = api_levels[self._clang_libs_arch(str(self.settings.arch))]
+        int_level = int(str(self.settings.os.api_level))
+        if int_level < min_level or int_level > int_level:
+            raise Exception('API Level unsupported: min=%s, max=%s, selected=%s' % (min_level, max_level, int_level))
+
+    def source(self):
+        # build tools have to download files in build method when the
+        # source files downloaded will be different based on architecture or OS
+        pass
 
     def build(self):
         # We are using the build step because sources are different for each platform
@@ -98,6 +134,17 @@ class AndroidNdkConan(ConanFile):
         tools.unzip('ndk.zip', keep_permissions=True)
         os.remove('ndk.zip')
 
+    def _clang_libs_arch(self, arch):
+        return {
+            'armv8': 'aarch64',
+            'armv7': 'arm',
+            'armv7s': 'arm',
+            'armv7k': 'arm',
+            'armv7hf': 'arm',
+            'x86': 'i686',
+            'x86_64': 'x86_64',
+        }[arch]
+
     def copy_ndk_libs(self, arch):
         """ On Android standard library and all the sanitizer support libraries
         are stored under the not very obvious, architecture-specific paths. We
@@ -108,15 +155,7 @@ class AndroidNdkConan(ConanFile):
         any `lib/` subdirectory, otherwise import will be bad-defined (all the
         libraries will be imported)."""
         ndk_arch = self.conan_arch_to_ndk_arch(arch)
-        clang_libs_arch = {
-            'armv8': 'aarch64',
-            'armv7': 'arm',
-            'armv7s': 'arm',
-            'armv7k': 'arm',
-            'armv7hf': 'arm',
-            'x86': 'i686',
-            'x86_64': 'x86_64',
-        }[arch]
+        clang_libs_arch = self._clang_libs_arch(arch)
 
         target_path = os.path.join('android-lib', arch)
 
@@ -160,6 +199,7 @@ class AndroidNdkConan(ConanFile):
     def package_info(self):
         tools_path = os.path.join(self.package_folder, 'build', 'tools')
         cmake_toolchain = os.path.join(self.package_folder, 'build', 'cmake', 'android.toolchain.cmake')
+        toolchain_dir = os.path.join(self.package_folder, 'toolchains', 'llvm', 'prebuilt', self.platform_id)
 
         self.env_info.PATH.append(tools_path)
         self.env_info.ANDROID_NDK = self.package_folder
@@ -172,11 +212,37 @@ class AndroidNdkConan(ConanFile):
         self.env_info.CONAN_ANDROID_PIE = 'ON' if self.options.fPIE else 'OFF'
         self.env_info.CONAN_ANDROID_ABI = self.ndk_arch
 
+        bin_dir = os.path.join(toolchain_dir, 'bin')
+        def bin_path(name):
+            return os.path.join(bin_dir, '%s-%s' % (self.android_triple, name))
+
+        def get_target_flag():
+            return os.path.join('--target=%s-linux-%s%s' % (self.android_triple_prefix, self.android_triple_suffix, str(self.settings.os.api_level)))
+
+        self.env_info.PATH.append(bin_dir)
+        self.env_info.CC = os.path.join(bin_dir, 'clang')
+        self.env_info.CXX = os.path.join(bin_dir, 'clang++')
+        self.env_info.SYSROOT = os.path.join(toolchain_dir , 'sysroot')
+        self.env_info.CHOST = self.android_triple
+        self.env_info.AR = bin_path('ar')
+        self.env_info.AS = bin_path('as')
+        self.env_info.LD = bin_path('ld')
+        self.env_info.STRIP = bin_path('strip')
+        self.env_info.RANLIB = bin_path('ranlib')
+        self.env_info.ARFLAGS = bin_path('rcs')
+
         if self.settings.os_build == 'Windows':
             self.output.info('Setting Unix Makefiles as default generator for Android under Windows')
             self.env_info.CONAN_CMAKE_GENERATOR="Unix Makefiles"
 
-        cflags = []
+        include_folder = os.path.join(toolchain_dir , 'sysroot', 'usr', 'include')
+
+        cflags = [
+            get_target_flag(),
+            # '-isystem %s' % os.path.join(include_folder, 'c++', 'v1'),
+            # '-isystem %s' % os.path.join(include_folder),
+            # '-isystem %s' % os.path.join(include_folder, self.android_triple),
+        ]
         exelinkflags = []
         if self.options.fPIE:
             cflags.append('-fPIE')
@@ -185,9 +251,16 @@ class AndroidNdkConan(ConanFile):
         if self.options.fPIC:
             cflags.append('-fPIC')
 
+        # https://github.com/android-ndk/ndk/issues/635
+        if self.settings.arch == 'x86' and int(self.settings.os.api_level) < 24:
+            cflags.append('-mstackrealign')
+
         self.cpp_info.cflags = cflags
         self.cpp_info.cxxflags = cflags
         self.cpp_info.exelinkflags = exelinkflags
+        self.cpp_info.includedirs = [include_folder]
+
+        self.env_info.ASFLAGS = [get_target_flag()]
 
         # Setup libraries directories
         self.cpp_info.libdirs = [os.path.join('android-lib', str(self.settings.arch))]

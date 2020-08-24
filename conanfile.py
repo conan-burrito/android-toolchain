@@ -252,7 +252,7 @@ class AndroidNdkConan(ConanFile):
             cflags.append('-fPIC')
 
         # https://github.com/android-ndk/ndk/issues/635
-        if self.settings.arch == 'x86' and int(self.settings.os.api_level) < 24:
+        if self.settings.arch == 'x86' and int(str(self.settings.os.api_level)) < 24:
             cflags.append('-mstackrealign')
 
         self.cpp_info.cflags = cflags

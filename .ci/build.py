@@ -13,7 +13,7 @@ def make_settings(arch):
     }.get(arch)
 
     def get_level():
-        return 14 if bitness == 32 else 21
+        return 16 if bitness == 32 else 21
 
     return {
         'os': 'Android',

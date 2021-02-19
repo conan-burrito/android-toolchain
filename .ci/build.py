@@ -1,4 +1,4 @@
-from cpm import ConanMultiPackager
+from cpt.packager import ConanMultiPackager
 
 
 def make_settings(arch):

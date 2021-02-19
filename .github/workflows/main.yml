@@ -1,7 +1,7 @@
 name: build_and_test
 
 env:
-  CONAN_REFERENCE: "android-toolchain/r21d"
+  CONAN_REFERENCE: "android-toolchain/r21e"
   CONAN_USERNAME: "conan-burrito"
   CONAN_UPLOAD: "https://conan.yobasoft.de"
   CONAN_UPLOAD_RETRY: 50

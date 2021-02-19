@@ -5,7 +5,7 @@ from conans import ConanFile, tools
 
 class AndroidNdkConan(ConanFile):
     name = 'android-toolchain'
-    version = 'r21d'
+    version = 'r21e'
     license = 'Apache License 2.0'
     description = 'The Android NDK is a toolset that lets you implement parts ' \
                   'of your app in native code, using languages such as C and ' \
@@ -44,7 +44,10 @@ class AndroidNdkConan(ConanFile):
 
     @property
     def platform_id(self):
-        return '{os_name}-{target}'.format(os_name=self.os_name, target=self.settings.arch_build)
+        arch = self.settings.arch_build
+        if self.settings.os_build == 'Macos' and 'arm' in str(self.settings.arch_build):
+            arch = 'x86_64'
+        return '{os_name}-{target}'.format(os_name=self.os_name, target=arch)
 
     @property
     def ndk_folder(self):
@@ -116,9 +119,9 @@ class AndroidNdkConan(ConanFile):
             return 'https://dl.google.com/android/repository/android-ndk-{fid}.zip'.format(fid=file_id)
 
         hashes = {
-            'r21d-windows-x86_64': '99175ce1210258f2280568cd340e0666c69955c7',
-            'r21d-darwin-x86_64': 'ef06c9f9d7efd6f243eb3c05ac440562ae29ae12',
-            'r21d-linux-x86_64': 'bcf4023eb8cb6976a4c7cff0a8a8f145f162bf4d',
+            ('%s-windows-x86_64' % self.version): 'fc44fea8bb3f5a6789821f40f41dce2d2cd5dc30',
+            ('%s-darwin-x86_64' % self.version): '3f15c23a1c247ad17c7c271806848dbd40434738',
+            ('%s-linux-x86_64' % self.version): 'c3ebc83c96a4d7f539bd72c241b2be9dcd29bda9',
         }
 
         file_id = self.ndk_folder

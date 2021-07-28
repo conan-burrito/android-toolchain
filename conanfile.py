@@ -54,7 +54,12 @@ class AndroidNdkConan(ConanFile):
 
     @property
     def _host(self):
-        return self._platform + '-' + str(self.settings.arch_build)
+        arch = str(self.settings.arch_build)
+        if self._is_apple_m1:
+            # Fall back to rosetta on M1
+            arch = 'x86_64'
+
+        return self._platform + '-' + arch
 
     @property
     def _ndk_root(self):
@@ -84,16 +89,20 @@ class AndroidNdkConan(ConanFile):
     def _llvm_triplet(self):
         return '%s-linux-%s' % (self._android_triplet_prefix, self.android_triplet_suffix)
 
+    @property
+    def _is_apple_m1(self):
+        return self.settings.os_build == 'Macos' and 'arm' in str(self.settings.arch_build)
+
     def configure(self):
         if self.settings.os_build == 'Windows':
             self.output.info('Using Android toolchain under Windows requires the MSYS environment, adding it to the requirements list')
             self.requires('msys2/cci.latest@conan-burrito/stable')
 
-        if self.settings.arch_build != 'x86_64':
+        if self.settings.arch_build != 'x86_64' and not self._is_apple_m1:
             raise ConanInvalidConfiguration("No binaries available for other than 'x86_64' architectures")
 
         api_levels = {
-            'aarch64' : (21, 30),
+            'aarch64': (21, 30),
             'arm': (16, 30),
             'i686': (16, 30),
             'x86_64': (21, 30),
@@ -110,8 +119,9 @@ class AndroidNdkConan(ConanFile):
         os.rename(extracted_dir, self._source_subfolder)
 
     def build(self):
-        pass # no build, but please also no warnings
+        pass  # no build, but please also no warnings
 
+    @static
     def _clang_libs_arch(self, arch):
         return {
             'armv8': 'aarch64',
@@ -214,7 +224,6 @@ class AndroidNdkConan(ConanFile):
         self.output.info('Creating ANDROID_NATIVE_API_LEVEL environment variable: %s' % self.settings.os.api_level)
         self.env_info.ANDROID_NATIVE_API_LEVEL = str(self.settings.os.api_level)
 
-
         toolchain = os.path.join(self.package_folder, 'build', 'cmake', 'android.toolchain.cmake')
         self.output.info('Creating CONAN_CMAKE_TOOLCHAIN_FILE environment variable: %s' % toolchain)
         self.env_info.ANDROID_NDK_CMAKE_TOOLCHAIN = toolchain
@@ -230,13 +239,13 @@ class AndroidNdkConan(ConanFile):
 
         self.env_info.ANDROID_NDK = self.package_folder
 
-
         self.env_info.CONAN_ANDROID_STL = str(self.settings.compiler.libcxx)
         self.env_info.CONAN_POSITION_INDEPENDENT_CODE = 'ON' if self.options.fPIC else 'OFF'
         self.env_info.CONAN_ANDROID_PIE = 'ON' if self.options.fPIE else 'OFF'
         self.env_info.CONAN_ANDROID_ABI = self.ndk_arch
 
         bin_dir = os.path.join(toolchain_dir, 'bin')
+
         def bin_path(name):
             return os.path.join(bin_dir, '%s-%s' % (self._llvm_triplet, name))
 
@@ -255,9 +264,9 @@ class AndroidNdkConan(ConanFile):
 
         if self.settings.os_build == 'Windows':
             self.output.info('Setting Unix Makefiles as default generator for Android under Windows')
-            self.env_info.CONAN_CMAKE_GENERATOR="Unix Makefiles"
+            self.env_info.CONAN_CMAKE_GENERATOR = "Unix Makefiles"
 
-        include_folder = os.path.join(toolchain_dir , 'sysroot', 'usr', 'include')
+        include_folder = os.path.join(toolchain_dir, 'sysroot', 'usr', 'include')
 
         cflags = [
             get_target_flag(),

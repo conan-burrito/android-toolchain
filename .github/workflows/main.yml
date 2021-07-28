@@ -1,7 +1,7 @@
 name: build_and_test
 
 env:
-  CONAN_REFERENCE: "android-toolchain/r21d"
+  CONAN_REFERENCE: "android-toolchain/r21e"
   CONAN_USERNAME: "conan-burrito"
   CONAN_UPLOAD: "https://conan.yobasoft.de"
   CONAN_UPLOAD_RETRY: 50
@@ -42,9 +42,3 @@ jobs:
             conan remote disable conan-center
       - name: Build and test
         run: python .ci/build.py
-      - name: Push recipe into Bintray
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-            conan remote add bintray-burrito https://api.bintray.com/conan/conan-burrito/main
-            conan user -p ${{ env.BINTRAY_PASSWORD }} -r bintray-burrito ${{ env.BINTRAY_USER }}
-            conan upload -r bintray-burrito ${{ env.CONAN_REFERENCE }}@conan-burrito/stable

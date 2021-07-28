@@ -1,0 +1,12 @@
+sources:
+  "r21e":
+    url:
+      "Windows":
+        url: "https://dl.google.com/android/repository/android-ndk-r21e-windows-x86_64.zip"
+        sha256: "f71307c5c572e2c163d602b3704b8bc024bec0c43ba2800de36bd10f3a21492b"
+      "Linux":
+        url: "https://dl.google.com/android/repository/android-ndk-r21e-linux-x86_64.zip"
+        sha256: "ad7ce5467e18d40050dc51b8e7affc3e635c85bd8c59be62de32352328ed467e"
+      "Macos":
+        url: "https://dl.google.com/android/repository/android-ndk-r21e-darwin-x86_64.zip"
+        sha256: "437278103a3db12632c05b1be5c41bbb8522791a67e415cc54411a65366f499d"

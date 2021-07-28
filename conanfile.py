@@ -121,8 +121,8 @@ class AndroidNdkConan(ConanFile):
     def build(self):
         pass  # no build, but please also no warnings
 
-    @static
-    def _clang_libs_arch(self, arch):
+    @staticmethod
+    def _clang_libs_arch(arch):
         return {
             'armv8': 'aarch64',
             'armv7': 'arm',

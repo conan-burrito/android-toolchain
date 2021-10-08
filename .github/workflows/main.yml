@@ -3,9 +3,9 @@ name: build_and_test
 env:
   CONAN_REFERENCE: "android-toolchain/r21e"
   CONAN_USERNAME: "conan-burrito"
-  CONAN_UPLOAD: "https://conan.yobasoft.de"
   CONAN_UPLOAD_RETRY: 50
   CONAN_STABLE_BRANCH_PATTERN: "release/*"
+  CONAN_UPLOAD: "${{ secrets.CONAN_UPLOAD }}"
   CONAN_LOGIN_USERNAME: "${{ secrets.CONAN_LOGIN_USERNAME }}"
   CONAN_PASSWORD: "${{ secrets.CONAN_PASSWORD }}"
   BINTRAY_USER: "${{ secrets.BINTRAY_USER }}"

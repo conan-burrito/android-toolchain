@@ -1,15 +1,9 @@
 name: build_and_test
 
 env:
-  CONAN_REFERENCE: "android-toolchain/r21e"
-  CONAN_USERNAME: "conan-burrito"
-  CONAN_UPLOAD_RETRY: 50
-  CONAN_STABLE_BRANCH_PATTERN: "release/*"
   CONAN_UPLOAD: "${{ secrets.CONAN_UPLOAD }}"
   CONAN_LOGIN_USERNAME: "${{ secrets.CONAN_LOGIN_USERNAME }}"
   CONAN_PASSWORD: "${{ secrets.CONAN_PASSWORD }}"
-  BINTRAY_USER: "${{ secrets.BINTRAY_USER }}"
-  BINTRAY_PASSWORD: "${{ secrets.BINTRAY_PASSWORD }}"
 
 
 on:
@@ -26,9 +20,9 @@ jobs:
       max-parallel: 1
       matrix:
         os:
-          - windows-latest
+          - windows-2019
           - ubuntu-20.04
-          - macos-latest
+          - macos-12
     steps:
       - uses: actions/checkout@v1
       - name: Set up Python
@@ -41,4 +35,4 @@ jobs:
             pip install conan conan_package_tools pyelftools
             conan remote disable conancenter
       - name: Build and test
-        run: python .ci/build.py
+        run: echo "TODO"

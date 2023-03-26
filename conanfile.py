@@ -1,303 +1,334 @@
-from conans import ConanFile, tools
-from conans.errors import ConanInvalidConfiguration
-
+from conan import ConanFile, conan_version
+from conan.errors import ConanInvalidConfiguration
+from conan.tools.files import get, download, unzip, load, copy
+from conan.tools.layout import basic_layout
+from conan.tools.scm import Version
 import os
+import re
+import shutil
 
 
-class AndroidNdkConan(ConanFile):
-    name = 'android-toolchain'
-    license = 'Apache License 2.0'
-    description = 'The Android NDK is a toolset that lets you implement parts ' \
-                  'of your app in native code, using languages such as C and ' \
-                  'C++. For certain types of apps, this can help you reuse ' \
-                  'code libraries written in those languages'
+class AndroidNDKConan(ConanFile):
+    name = "android-ndk"
+    description = "The Android NDK is a toolset that lets you implement parts of your app in native code, using languages such as C and C++"
+    url = "https://github.com/conan-io/conan-center-index"
+    homepage = "https://developer.android.com/ndk/"
+    version = 'r25c'
+    license = "Apache-2.0"
 
-    homepage = 'https://developer.android.com/ndk'
-    url = 'https://github.com/conan-burrito/android-toolchain'
-
-    settings = 'os', 'arch', 'os_build', 'arch_build', 'compiler'
-
-    options = {'fPIC': [True, False], 'fPIE': [True, False]}
-    default_options = {'fPIC': True, 'fPIE': True}
-
-    no_copy_source = True
-    build_policy = 'missing'
-
-    # The android toolchain contains a lot of files with giant paths and names so we have to use shor paths here
+    settings = "os", "arch"
     short_paths = True
 
-    # This file will be included by conan CMake build helper by setting the CONAN_CMAKE_TOOLCHAIN_FILE environment
-    # variable and in turn include the Android NDK Toolchain file after setting some CMake variables
-    exports_sources = 'android-toolchain-wrapper.cmake'
+    @property
+    def _arch(self):
+        return self.settings_build.arch
 
     @property
-    def _source_subfolder(self):
-        return 'src'
-
-    @staticmethod
-    def conan_arch_to_ndk_arch(conan_arch):
-        return {
-            'armv7': 'armeabi-v7a',
-            'armv7hf': 'armeabi-v7a',
-            'armv8': 'arm64-v8a'
-        }.get(conan_arch, conan_arch)
+    def _settings_os_supported(self):
+        return self.conan_data["sources"][self.version].get(str(self.settings_build.os)) is not None
 
     @property
-    def ndk_arch(self):
-        return self.conan_arch_to_ndk_arch(str(self.settings.arch))
+    def _settings_arch_supported(self):
+        return self.conan_data["sources"][self.version].get(str(self.settings_build.os), {}).get(str(self._arch)) is not None
+
+    def layout(self):
+        basic_layout(self, src_folder="src")
+
+    def validate(self):
+        if not self._settings_os_supported:
+            raise ConanInvalidConfiguration(f"os={self.settings_build.os} is not supported by {self.name} (no binaries are available)")
+        if not self._settings_arch_supported:
+            raise ConanInvalidConfiguration(f"os,arch={self.settings_build.os},{self.settings.arch} is not supported by {self.name} (no binaries are available)")
+
+    def source(self):
+        pass
+
+    def build(self):
+        major, _ = self._ndk_major_minor
+        data = self.conan_data["sources"][self.version][str(self.settings_build.os)][str(self._arch)]
+        self._unzip_fix_symlinks(url=data["url"], target_folder=self.source_folder, sha256=data["sha256"])
+
+    def package(self):
+        copy(self, "*", src=self.source_folder, dst=os.path.join(self.package_folder, "bin"))
+        copy(self, "*NOTICE", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
+        copy(self, "*NOTICE.toolchain", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
+        self._fix_broken_links()
+        self._fix_permissions()
+
+    # from here on, everything is assumed to run in 2 profile mode, using this android-ndk recipe as a build requirement
 
     @property
     def _platform(self):
-        return {"Windows": "windows",
-                "Macos": "darwin",
-                "Linux": "linux"}.get(str(self.settings.os_build))
-
-    @property
-    def _host(self):
-        arch = str(self.settings.arch_build)
-        if self._is_apple_m1:
-            # Fall back to rosetta on M1
-            arch = 'x86_64'
-
-        return self._platform + '-' + arch
-
-    @property
-    def _ndk_root(self):
-        return os.path.join(self.package_folder, 'toolchains', 'llvm', 'prebuilt', self._host)
-
-    @property
-    def compiler_version(self):
-        return '9.0.8'
-
-    @property
-    def _android_triplet_prefix(self):
         return {
-            'armv8': 'aarch64',
-            'armv7': 'arm',
-            'armv7s': 'arm',
-            'armv7k': 'arm',
-            'armv7hf': 'arm',
-            'x86': 'i686',
-            'x86_64': 'x86_64',
-        }[str(self.settings.arch)]
+            "Linux": "linux",
+            "Macos": "darwin",
+            "Windows": "windows",
+        }.get(str(self.settings_build.os))
 
     @property
-    def android_triplet_suffix(self):
-        return 'androideabi' if self._android_triplet_prefix == 'arm' else 'android'
+    def _android_abi(self):
+        return {
+            "armv7": "armeabi-v7a",
+            "armv8": "arm64-v8a",
+            "x86": "x86",
+            "x86_64": "x86_64",
+        }.get(str(self.settings_target.arch))
 
     @property
     def _llvm_triplet(self):
-        return '%s-linux-%s' % (self._android_triplet_prefix, self.android_triplet_suffix)
+        arch = {
+            "armv7": "arm",
+            "armv8": "aarch64",
+            "x86": "i686",
+            "x86_64": "x86_64",
+        }.get(str(self.settings_target.arch))
+        abi = "androideabi" if self.settings_target.arch == "armv7" else "android"
+        return f"{arch}-linux-{abi}"
 
     @property
-    def _is_apple_m1(self):
-        return self.settings.os_build == 'Macos' and 'arm' in str(self.settings.arch_build)
+    def _clang_triplet(self):
+        arch = {
+            "armv7": "armv7a",
+            "armv8": "aarch64",
+            "x86": "i686",
+            "x86_64": "x86_64",
+        }.get(str(self.settings_target.arch))
+        abi = "androideabi" if self.settings_target.arch == "armv7" else "android"
+        return f"{arch}-linux-{abi}"
 
-    def configure(self):
-        if self.settings.os_build == 'Windows':
-            self.output.info('Using Android toolchain under Windows requires the MSYS environment, adding it to the requirements list')
-            self.requires('msys2/cci.latest@conan-burrito/stable')
+    @property
+    def _ndk_major_minor(self):
+        match = re.search(r"r(\d+)(\w?)", self.version)
+        assert match
+        major, minor = match.groups()
+        assert major
+        return int(major), minor if minor else "a"
 
-        if self.settings.arch_build != 'x86_64' and not self._is_apple_m1:
-            raise ConanInvalidConfiguration("No binaries available for other than 'x86_64' architectures")
+    @property
+    def _ndk_version_major(self):
+        return self._ndk_major_minor[0]
 
-        api_levels = {
-            'aarch64': (21, 30),
-            'arm': (16, 30),
-            'i686': (16, 30),
-            'x86_64': (21, 30),
-        }
-        min_level, max_level = api_levels[self._clang_libs_arch(str(self.settings.arch))]
-        int_level = int(str(self.settings.os.api_level))
-        if int_level < min_level or int_level > int_level:
-            raise Exception('API Level unsupported: min=%s, max=%s, selected=%s' % (min_level, max_level, int_level))
+    @property
+    def _ndk_version_minor(self):
+        return self._ndk_major_minor[1]
 
-    def source(self):
-        tarballs = self.conan_data['sources'][self.version]['url']
-        tools.get(**tarballs[str(self.settings.os_build)], keep_permissions=True)
-        extracted_dir = 'android-ndk-' + self.version
-        os.rename(extracted_dir, self._source_subfolder)
+    def _fix_permissions(self):
+        if os.name != "posix":
+            return
+        for root, _, files in os.walk(os.path.join(self.package_folder, "bin")):
+            for filename in files:
+                filename = os.path.join(root, filename)
+                with open(filename, "rb") as f:
+                    sig = f.read(4)
+                    if isinstance(sig, str):
+                        sig = [ord(s) for s in sig]
+                    else:
+                        sig = list(sig)
+                    if len(sig) > 2 and sig[0] == 0x23 and sig[1] == 0x21:
+                        self.output.info(f"chmod on script file: '{filename}'")
+                        self._chmod_plus_x(filename)
+                    elif sig == [0x7F, 0x45, 0x4C, 0x46]:
+                        self.output.info(f"chmod on ELF file: '{filename}'")
+                        self._chmod_plus_x(filename)
+                    elif sig in (
+                        [0xCA, 0xFE, 0xBA, 0xBE],
+                        [0xBE, 0xBA, 0xFE, 0xCA],
+                        [0xFE, 0xED, 0xFA, 0xCF],
+                        [0xCF, 0xFA, 0xED, 0xFE],
+                        [0xFE, 0xEF, 0xFA, 0xCE],
+                        [0xCE, 0xFA, 0xED, 0xFE]
+                    ):
+                        self.output.info(f"chmod on Mach-O file: '{filename}'")
+                        self._chmod_plus_x(filename)
 
-    def build(self):
-        pass  # no build, but please also no warnings
+    def _fix_broken_links(self):
+        # https://github.com/android/ndk/issues/1671
+        # https://github.com/android/ndk/issues/1569
+        if self.version in ["r23b", "r23c"] and self.settings_build.os in ["Linux", "Macos"]:
+            platform = "darwin" if self.settings_build.os == "Macos" else "linux"
+            links = {f"toolchains/llvm/prebuilt/{platform}-x86_64/aarch64-linux-android/bin/as": "../../bin/aarch64-linux-android-as",
+                     f"toolchains/llvm/prebuilt/{platform}-x86_64/arm-linux-androideabi/bin/as": "../../bin/arm-linux-androideabi-as",
+                     f"toolchains/llvm/prebuilt/{platform}-x86_64/x86_64-linux-android/bin/as": "../../bin/x86_64-linux-android-as",
+                     f"toolchains/llvm/prebuilt/{platform}-x86_64/i686-linux-android/bin/as": "../../bin/i686-linux-android-as"}
+            for path, target in links.items():
+                path = os.path.join(self.package_folder, "bin", path)
+                os.unlink(path)
+                os.symlink(target, path)
 
-    @staticmethod
-    def _clang_libs_arch(arch):
-        return {
-            'armv8': 'aarch64',
-            'armv7': 'arm',
-            'armv7s': 'arm',
-            'armv7k': 'arm',
-            'armv7hf': 'arm',
-            'x86': 'i686',
-            'x86_64': 'x86_64',
-        }[arch]
+    @property
+    def _host(self):
+        return f"{self._platform}-{self._arch}"
 
-    def copy_ndk_libs(self, arch):
-        """ On Android standard library and all the sanitizer support libraries
-        are stored under the not very obvious, architecture-specific paths. We
-        collect all the relevant ones and put them into a more intuitive
-        directories.
-            Because we are using the same NDK package for all the architectures,
-        we can't just put them into the `lib` folder. We can't also put them into
-        any `lib/` subdirectory, otherwise import will be bad-defined (all the
-        libraries will be imported)."""
-        ndk_arch = self.conan_arch_to_ndk_arch(arch)
-        clang_libs_arch = self._clang_libs_arch(arch)
-
-        target_path = os.path.join('android-lib', arch)
-
-        clang_libs = os.path.join(self.package_folder, 'sources', 'cxx-stl', 'llvm-libc++', 'libs', ndk_arch)
-
-        sanitizer_libs = os.path.join(self.package_folder,
-                                      self._ndk_root,
-                                      'lib64', 'clang', self.compiler_version, 'lib', 'linux')
-
-        file_filters = [
-            '*-{arch}-*.so',
-            '*-{arch}.so',
-            '*-{arch}-*.a',
-            '*-{arch}.a',
-        ]
-
-        self.output.info('Copying libraries into: %s' % target_path)
-        self.output.info('Copying sanitizer libs from %s' % sanitizer_libs)
-        for arch_filter in file_filters:
-            mask = arch_filter.format(arch=clang_libs_arch)
-            self.copy(mask, src=sanitizer_libs, dst=target_path, keep_path=False)
-
-        self.output.info('Copying standard libraries from %s' % clang_libs)
-        self.copy('*.so', src=clang_libs, dst=target_path, keep_path=False)
-        self.copy('*.a', src=clang_libs, dst=target_path, keep_path=False)
-
-    def package(self):
-        self.copy("android-toolchain-wrapper.cmake")
-
-        self.copy('*', dst='.', src=self._source_subfolder, keep_path=True)
-        for arch in ['x86', 'x86_64', 'armv7', 'armv8']:
-            self.copy_ndk_libs(arch)
-
-        self.copy(pattern="*NOTICE", dst="licenses", src=self._source_subfolder)
-        self.copy(pattern="*NOTICE.toolchain", dst="licenses", src=self._source_subfolder)
-
-    def package_id(self):
-        self.info.include_build_settings()
-        self.info.settings.arch = 'ANY'
-        self.info.settings.runtime = 'ANY'
-        self.info.settings.compiler = 'ANY'
-        self.info.settings.os.api_level = 'ANY'
+    @property
+    def _ndk_root_rel_path(self):
+        return os.path.join("bin", "toolchains", "llvm", "prebuilt", self._host)
 
     @property
     def _ndk_root(self):
-        return os.path.join(self.package_folder, "toolchains", "llvm", "prebuilt", self._host)
+        return os.path.join(self.package_folder, self._ndk_root_rel_path)
+
+    def _wrap_executable(self, tool):
+        suffix = ".exe" if self.settings_build.os == "Windows" else ""
+        return f"{tool}{suffix}"
+
+    def _tool_name(self, tool, bare=False):
+        prefix = ""
+        if "clang" in tool:
+            suffix = ".cmd" if self.settings_build.os == "Windows" else ""
+            prefix = "llvm" if bare else f"{self._clang_triplet}{self.settings_target.os.api_level}"
+            return f"{prefix}-{tool}{suffix}"
+        else:
+            prefix = "llvm" if bare else f"{self._llvm_triplet}"
+            executable = f"{prefix}-{tool}"
+            return self._wrap_executable(executable)
+
+    @property
+    def _cmake_system_processor(self):
+        cmake_system_processor = {
+            "x86_64": "x86_64",
+            "x86": "i686",
+            "mips": "mips",
+            "mips64": "mips64",
+        }.get(str(self.settings.arch))
+        if self.settings_target.arch == "armv8":
+            cmake_system_processor = "aarch64"
+        elif "armv7" in str(self.settings.arch):
+            cmake_system_processor = "armv7-a"
+        elif "armv6" in str(self.settings.arch):
+            cmake_system_processor = "armv6"
+        elif "armv5" in str(self.settings.arch):
+            cmake_system_processor = "armv5te"
+        return cmake_system_processor
+
+    def _define_tool_var(self, name, value, bare = False):
+        ndk_bin = os.path.join(self._ndk_root, "bin")
+        path = os.path.join(ndk_bin, self._tool_name(value, bare))
+        if not os.path.isfile(path):
+            self.output.error(f"'Environment variable {name} could not be created: '{path}'")
+            return "UNKNOWN"
+        return path
+
+    def _define_tool_var_naked(self, name, value):
+        ndk_bin = os.path.join(self._ndk_root, "bin")
+        path = os.path.join(ndk_bin, self._wrap_executable(value))
+        if not os.path.isfile(path):
+            self.output.error(f"'Environment variable {name} could not be created: '{path}'")
+            return "UNKNOWN"
+        return path
+
+    @staticmethod
+    def _chmod_plus_x(filename):
+        if os.name == "posix":
+            os.chmod(filename, os.stat(filename).st_mode | 0o111)
 
     def package_info(self):
-        # test shall pass, so this runs also in the build as build requirement context
-        # ndk-build: https://developer.android.com/ndk/guides/ndk-build
-        self.env_info.PATH.append(self.package_folder)
+        self.cpp_info.includedirs = []
+        self.cpp_info.libdirs = []
 
         # You should use the ANDROID_NDK_ROOT environment variable to indicate where the NDK is located.
         # That's what most NDK-related scripts use (inside the NDK, and outside of it).
         # https://groups.google.com/g/android-ndk/c/qZjhOaynHXc
-        self.output.info('Creating ANDROID_NDK_ROOT environment variable: %s' % self.package_folder)
-        self.env_info.ANDROID_NDK_ROOT = self.package_folder
+        self.buildenv_info.define_path("ANDROID_NDK_ROOT", os.path.join(self.package_folder, "bin"))
 
-        self.output.info('Creating ANDROID_NDK_HOME environment variable: %s' % self.package_folder)
-        self.env_info.ANDROID_NDK_HOME = self.package_folder
+        self.buildenv_info.define_path("ANDROID_NDK_HOME", os.path.join(self.package_folder, "bin"))
 
-        self.output.info('Creating NDK_ROOT environment variable: %s' % self._ndk_root)
-        self.env_info.NDK_ROOT = self._ndk_root
+        #  this is not enough, I can kill that .....
+        if not hasattr(self, "settings_target"):
+            return
 
-        self.output.info('Creating CHOST environment variable: %s' % self._llvm_triplet)
-        self.env_info.CHOST = self._llvm_triplet
+        # interestingly I can reach that with
+        # conan test --profile:build nsdk-default --profile:host default /Users/a4z/elux/conan/myrecipes/android-ndk/all/test_package android-ndk/r21d@
+        if self.settings_target is None:
+            return
 
-        ndk_sysroot = os.path.join(self._ndk_root, 'sysroot')
-        self.output.info('Creating CONAN_CMAKE_FIND_ROOT_PATH environment variable: %s' % ndk_sysroot)
-        self.env_info.CONAN_CMAKE_FIND_ROOT_PATH = ndk_sysroot
+        # And if we are not building for Android, why bother at all
+        if not self.settings_target.os == "Android":
+            self.output.warning(f"You've added {self.ref} as a build requirement, while os={self.settings_target.os} != Android")
+            return
 
-        self.output.info('Creating SYSROOT environment variable: %s' % ndk_sysroot)
-        self.env_info.SYSROOT = ndk_sysroot
+        self.cpp_info.bindirs.append(os.path.join(self._ndk_root_rel_path, "bin"))
 
-        self.output.info('Creating self.cpp_info.sysroot: %s' % ndk_sysroot)
-        self.cpp_info.sysroot = ndk_sysroot
+        self.buildenv_info.define_path("NDK_ROOT", self._ndk_root)
 
-        self.output.info('Creating ANDROID_NATIVE_API_LEVEL environment variable: %s' % self.settings.os.api_level)
-        self.env_info.ANDROID_NATIVE_API_LEVEL = str(self.settings.os.api_level)
+        self.buildenv_info.define("CHOST", self._llvm_triplet)
 
-        toolchain = os.path.join(self.package_folder, 'build', 'cmake', 'android.toolchain.cmake')
-        self.output.info('Creating CONAN_CMAKE_TOOLCHAIN_FILE environment variable: %s' % toolchain)
-        self.env_info.ANDROID_NDK_CMAKE_TOOLCHAIN = toolchain
-        self.env_info.CONAN_CMAKE_TOOLCHAIN_FILE = os.path.join(self.package_folder, "android-toolchain-wrapper.cmake")
+        ndk_sysroot = os.path.join(self._ndk_root, "sysroot")
+        self.conf_info.define("tools.build:sysroot", ndk_sysroot)
+        self.buildenv_info.define_path("SYSROOT", ndk_sysroot)
 
-        ######
+        self.buildenv_info.define("ANDROID_NATIVE_API_LEVEL", str(self.settings_target.os.api_level))
 
-        toolchain_dir = self._ndk_root
-        tools_path = os.path.join(self.package_folder, 'build', 'tools')
+        # CMakeToolchain automatically adds the standard Android toolchain file that ships with the NDK
+        # when `tools.android:ndk_path` is provided, so it MUST NOT be manually injected here to `tools.cmake.cmaketoolchain:user_toolchain` conf_info
+        self.conf_info.define("tools.android:ndk_path", os.path.join(self.package_folder, "bin"))
 
-        self.env_info.PATH.append(self.package_folder)
-        self.env_info.PATH.append(tools_path)
+        compiler_executables = {
+            "c": self._define_tool_var("CC", "clang"),
+            "cpp": self._define_tool_var("CXX", "clang++"),
+        }
+        self.conf_info.update("tools.build:compiler_executables", compiler_executables)
+        self.buildenv_info.define_path("CC", compiler_executables["c"])
+        self.buildenv_info.define_path("CXX", compiler_executables["cpp"])
 
-        self.env_info.ANDROID_NDK = self.package_folder
+        # Versions greater than 23 had the naming convention
+        # changed to no longer include the triplet.
+        bare = self._ndk_version_major >= 23
+        self.buildenv_info.define_path("AR", self._define_tool_var("AR", "ar", bare))
+        self.buildenv_info.define_path("AS", self._define_tool_var("AS", "as", bare))
+        self.buildenv_info.define_path("RANLIB", self._define_tool_var("RANLIB", "ranlib", bare))
+        self.buildenv_info.define_path("STRIP", self._define_tool_var("STRIP", "strip", bare))
+        self.buildenv_info.define_path("ADDR2LINE", self._define_tool_var("ADDR2LINE", "addr2line", bare))
+        self.buildenv_info.define_path("NM", self._define_tool_var("NM", "nm", bare))
+        self.buildenv_info.define_path("OBJCOPY", self._define_tool_var("OBJCOPY", "objcopy", bare))
+        self.buildenv_info.define_path("OBJDUMP", self._define_tool_var("OBJDUMP", "objdump", bare))
+        self.buildenv_info.define_path("READELF", self._define_tool_var("READELF", "readelf", bare))
+        # there doesn't seem to be an 'elfedit' included anymore.
+        if self._ndk_version_major < 23:
+            self.buildenv_info.define_path("ELFEDIT", self._define_tool_var("ELFEDIT", "elfedit", bare))
 
-        self.env_info.CONAN_ANDROID_STL = str(self.settings.compiler.libcxx)
-        self.env_info.CONAN_POSITION_INDEPENDENT_CODE = 'ON' if self.options.fPIC else 'OFF'
-        self.env_info.CONAN_ANDROID_PIE = 'ON' if self.options.fPIE else 'OFF'
-        self.env_info.CONAN_ANDROID_ABI = self.ndk_arch
+        # The `ld` tool changed naming conventions earlier than others
+        if self._ndk_version_major >= 22:
+            self.buildenv_info.define_path("LD", self._define_tool_var_naked("LD", "ld"))
+        else:
+            self.buildenv_info.define_path("LD", self._define_tool_var("LD", "ld"))
 
-        bin_dir = os.path.join(toolchain_dir, 'bin')
+        self.buildenv_info.define("ANDROID_PLATFORM", f"android-{self.settings_target.os.api_level}")
+        self.buildenv_info.define("ANDROID_TOOLCHAIN", "clang")
+        self.buildenv_info.define("ANDROID_ABI", self._android_abi)
+        libcxx_str = str(self.settings_target.compiler.libcxx)
+        self.buildenv_info.define("ANDROID_STL", libcxx_str if libcxx_str.startswith("c++_") else "c++_shared")
 
-        def bin_path(name):
-            return os.path.join(bin_dir, '%s-%s' % (self._llvm_triplet, name))
+    def _unzip_fix_symlinks(self, url, target_folder, sha256):
+        # Python's built-in module 'zipfile' won't handle symlinks (https://bugs.python.org/issue37921)
+        # Most of the logic borrowed from this PR https://github.com/conan-io/conan/pull/8100
 
-        def get_target_flag():
-            return os.path.join('--target=%s-linux-%s%s' % (self._android_triplet_prefix, self.android_triplet_suffix, str(self.settings.os.api_level)))
+        filename = "android_sdk.zip"
+        download(self, url, filename, sha256=sha256)
+        unzip(self, filename, destination=target_folder, strip_root=True)
 
-        self.env_info.PATH.append(bin_dir)
-        self.env_info.CC = os.path.join(bin_dir, 'clang')
-        self.env_info.CXX = os.path.join(bin_dir, 'clang++')
-        self.env_info.AR = bin_path('ar')
-        self.env_info.AS = bin_path('as')
-        self.env_info.LD = bin_path('ld')
-        self.env_info.STRIP = bin_path('strip')
-        self.env_info.RANLIB = bin_path('ranlib')
-        self.env_info.ARFLAGS = bin_path('rcs')
+        def is_symlink_zipinfo(zi):
+            return (zi.external_attr >> 28) == 0xA
 
-        if self.settings.os_build == 'Windows':
-            self.output.info('Setting Unix Makefiles as default generator for Android under Windows')
-            self.env_info.CONAN_CMAKE_GENERATOR = "Unix Makefiles"
+        full_path = os.path.normpath(target_folder)
+        import zipfile
+        with zipfile.ZipFile(filename, "r") as z:
+            zip_info = z.infolist()
 
-        include_folder = os.path.join(toolchain_dir, 'sysroot', 'usr', 'include')
+            names = [n.replace("\\", "/") for n in z.namelist()]
+            common_folder = os.path.commonprefix(names).split("/", 1)[0]
 
-        cflags = [
-            get_target_flag(),
-            # '-isystem %s' % os.path.join(include_folder, 'c++', 'v1'),
-            # '-isystem %s' % os.path.join(include_folder),
-            # '-isystem %s' % os.path.join(include_folder, self._llvm_triplet),
-        ]
-        exelinkflags = []
-        if self.options.fPIE:
-            cflags.append('-fPIE')
-            exelinkflags.append('-pie')
+            for file_ in zip_info:
+                if is_symlink_zipinfo(file_):
+                    rel_path = os.path.relpath(file_.filename, common_folder)
+                    full_name = os.path.join(full_path, rel_path)
+                    target = load(self, full_name)
+                    os.unlink(full_name)
 
-        if self.options.fPIC:
-            cflags.append('-fPIC')
+                    try:
+                        os.symlink(target, full_name)
+                    except OSError:
+                        if not os.path.isabs(target):
+                            target = os.path.normpath(os.path.join(os.path.dirname(full_name), target))
+                        shutil.copy2(target, full_name)
 
-        # https://github.com/android-ndk/ndk/issues/635
-        if self.settings.arch == 'x86' and int(str(self.settings.os.api_level)) < 24:
-            cflags.append('-mstackrealign')
-
-        self.cpp_info.cflags = cflags
-        self.cpp_info.cxxflags = cflags
-        self.cpp_info.exelinkflags = exelinkflags
-        self.cpp_info.includedirs = [include_folder]
-
-        self.env_info.ASFLAGS = [get_target_flag()]
-
-        # Setup libraries directories
-        self.cpp_info.libdirs = [os.path.join('android-lib', str(self.settings.arch))]
-
-        self.env_info.ANDROID_PLATFORM = "android-%s" % self.settings.os.api_level
-        self.env_info.ANDROID_TOOLCHAIN = "clang"
-        self.env_info.ANDROID_ABI = self.ndk_arch
-        libcxx_str = str(self.settings.compiler.libcxx)
-        self.env_info.ANDROID_STL = libcxx_str if libcxx_str.startswith('c++_') else 'c++_shared'
+        os.unlink(filename)

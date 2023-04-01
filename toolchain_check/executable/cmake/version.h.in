@@ -1,0 +1,3 @@
+#pragma once
+
+#define DCE_VERSION_STR "@PROJECT_VERSION@"

@@ -1,0 +1,64 @@
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+set(DCE_VERSION_CONFIG "${DCE_GENERATED_CMAKE_DIR}/${PROJECT_NAME}ConfigVersion.cmake")
+set(DCE_PROJECT_CONFIG "${DCE_GENERATED_CMAKE_DIR}/${PROJECT_NAME}Config.cmake")
+
+set(DCE_INSTALL_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+set(DCE_TARGETS_EXPORT_NAME "${PROJECT_NAME}Targets")
+set(DCE_INSTALL_NAMESPACE "${PROJECT_NAME}::")
+
+write_basic_package_version_file("${DCE_VERSION_CONFIG}" COMPATIBILITY SameMajorVersion)
+configure_package_config_file(cmake/Config.cmake.in
+   "${DCE_PROJECT_CONFIG}"
+   INSTALL_DESTINATION "${DCE_INSTALL_CMAKE_DIR}"
+)
+
+set(DCE_INSTALL_TARGETS dummy_conan_executable)
+
+install(
+   TARGETS ${DCE_INSTALL_TARGETS}
+
+   EXPORT ${DCE_TARGETS_EXPORT_NAME}
+
+   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+           COMPONENT   DCE_Runtime
+
+   LIBRARY DESTINATION        ${CMAKE_INSTALL_LIBDIR}
+           COMPONENT          DCE_Runtime
+           NAMELINK_COMPONENT DCE_Development
+
+   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+           COMPONENT   DCE_Development
+
+   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY ${DCE_GENERATED_INCLUDE_DIR}/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(
+   FILES
+      ${DCE_GENERATED_EXPORT_HEADER}
+   DESTINATION
+      "${CMAKE_INSTALL_INCLUDEDIR}/dce"
+)
+
+install(
+   FILES
+      ${DCE_PROJECT_CONFIG}
+      ${DCE_VERSION_CONFIG}
+   DESTINATION
+      ${DCE_INSTALL_CMAKE_DIR}
+)
+
+set_target_properties(dummy_conan_executable PROPERTIES EXPORT_NAME executable)
+add_executable(DummyConanExecutable::executable ALIAS dummy_conan_executable)
+
+install(
+   EXPORT ${DCE_TARGETS_EXPORT_NAME}
+   DESTINATION ${DCE_INSTALL_CMAKE_DIR}
+   NAMESPACE ${DCE_INSTALL_NAMESPACE}
+   COMPONENT DCE_Development
+)
+

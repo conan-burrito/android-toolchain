@@ -1,16 +1,17 @@
-from conan import ConanFile, conan_version
+from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
-from conan.tools.files import get, download, unzip, load, copy
+from conan.tools.files import download, unzip, load, copy
 from conan.tools.layout import basic_layout
-from conan.tools.scm import Version
+
 import os
 import re
 import shutil
 
 
-class AndroidNDKConan(ConanFile):
-    name = "android-ndk"
-    description = "The Android NDK is a toolset that lets you implement parts of your app in native code, using languages such as C and C++"
+class AndroidToolchain(ConanFile):
+    name = "android-toolchain"
+    description = "The Android NDK is a toolset that lets you implement parts of your app in native code, using " \
+                  "languages such as C and C++"
     url = "https://github.com/conan-io/conan-center-index"
     homepage = "https://developer.android.com/ndk/"
     version = 'r25c'
@@ -19,9 +20,12 @@ class AndroidNDKConan(ConanFile):
     settings = "os", "arch"
     short_paths = True
 
+    def _is_universal2(self):
+        return self.settings_build.os == "Macos" and self.settings_build.arch in ["x86_64", "armv8"]
+
     @property
     def _arch(self):
-        return self.settings_build.arch
+        return "x86_64" if self._is_universal2() else self.settings_build.arch
 
     @property
     def _settings_os_supported(self):

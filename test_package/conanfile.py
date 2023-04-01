@@ -39,7 +39,7 @@ class TestPackgeConan(ConanFile):
     def check_arch(self):
         from elftools.elf.elffile import ELFFile
         self.output.info('Loading ELFFile')
-        with open(os.path.join('bin', 'example'), 'rb') as f:
+        with open(os.path.join('example'), 'rb') as f:
             elf = ELFFile(f)
 
         elf_arch = elf.get_machine_arch()

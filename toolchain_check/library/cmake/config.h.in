@@ -1,0 +1,4 @@
+#pragma once
+
+#define DCL_MESSAGE_TO_RETURN "@DCL_MESSAGE_TO_RETURN@"
+
